@@ -1,0 +1,4 @@
+# Serve React Router pages through the Vite entry point.
+/services /index.html 200
+/about /index.html 200
+/contact /index.html 200
