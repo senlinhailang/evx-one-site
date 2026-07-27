@@ -1,6 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
-import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom'
-import * as THREE from 'three'
+import { useEffect, useState } from 'react'
+import {
+  Link,
+  NavLink,
+  Route,
+  Routes,
+  useLinkClickHandler,
+  useLocation,
+} from 'react-router-dom'
 import {
   ArrowRightOutlined,
   AuditOutlined,
@@ -97,6 +103,17 @@ function BrandMark() {
   )
 }
 
+function RouterButton({ to, onClick, ...props }) {
+  const handleLinkClick = useLinkClickHandler(to)
+
+  const handleClick = (event) => {
+    onClick?.(event)
+    if (!event.defaultPrevented) handleLinkClick(event)
+  }
+
+  return <Button {...props} href={to} onClick={handleClick} />
+}
+
 function SiteHeader() {
   const [open, setOpen] = useState(false)
   const navItems = [
@@ -127,9 +144,9 @@ function SiteHeader() {
       <div className="nav-shell">
         <BrandMark />
         <div className="desktop-nav">{nav}</div>
-        <Button className="desktop-cta" type="primary" href="/contact">
+        <RouterButton className="desktop-cta" type="primary" to="/contact">
           Let&apos;s talk <ArrowRightOutlined />
-        </Button>
+        </RouterButton>
         <Button
           className="menu-button"
           type="text"
@@ -146,9 +163,9 @@ function SiteHeader() {
         title={<BrandMark />}
       >
         {nav}
-        <Button block type="primary" href="/contact" onClick={() => setOpen(false)}>
+        <RouterButton block type="primary" to="/contact" onClick={() => setOpen(false)}>
           Let&apos;s talk <ArrowRightOutlined />
-        </Button>
+        </RouterButton>
       </Drawer>
     </Header>
   )
@@ -184,298 +201,6 @@ function ServiceCard({ service }) {
   )
 }
 
-function ThreeGlobe({ threats }) {
-  const mountRef = useRef(null)
-
-  useEffect(() => {
-    const mount = mountRef.current
-    if (!mount) return undefined
-
-    const scene = new THREE.Scene()
-    const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100)
-    camera.position.set(0, 0, 4.1)
-
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true })
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.outputColorSpace = THREE.SRGBColorSpace
-    mount.appendChild(renderer.domElement)
-
-    const globe = new THREE.Group()
-    globe.rotation.x = -0.16
-    globe.rotation.z = -0.08
-    scene.add(globe)
-
-    const sphere = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 64, 48),
-      new THREE.MeshStandardMaterial({
-        color: 0x09050f,
-        emissive: 0x170727,
-        emissiveIntensity: 0.5,
-        metalness: 0.55,
-        roughness: 0.48,
-        transparent: true,
-        opacity: 0.96,
-      }),
-    )
-    globe.add(sphere)
-
-    const gridMaterial = new THREE.LineBasicMaterial({
-      color: 0xb77af2,
-      transparent: true,
-      opacity: 0.25,
-      blending: THREE.AdditiveBlending,
-    })
-
-    for (let latitude = -60; latitude <= 60; latitude += 20) {
-      const phi = THREE.MathUtils.degToRad(latitude)
-      const radius = Math.cos(phi)
-      const y = Math.sin(phi)
-      const points = Array.from({ length: 97 }, (_, index) => {
-        const angle = (index / 96) * Math.PI * 2
-        return new THREE.Vector3(Math.cos(angle) * radius, y, Math.sin(angle) * radius)
-      })
-      globe.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points), gridMaterial))
-    }
-
-    for (let longitude = 0; longitude < 180; longitude += 20) {
-      const lon = THREE.MathUtils.degToRad(longitude)
-      const points = Array.from({ length: 97 }, (_, index) => {
-        const angle = (index / 96) * Math.PI * 2
-        return new THREE.Vector3(
-          Math.sin(angle) * Math.cos(lon),
-          Math.cos(angle),
-          Math.sin(angle) * Math.sin(lon),
-        )
-      })
-      globe.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points), gridMaterial))
-    }
-
-    let threatMaterial
-    if (threats.length > 1) {
-      const toGlobePosition = ({ latitude, longitude }, radius = 1.025) => {
-        const lat = THREE.MathUtils.degToRad(latitude)
-        const lon = THREE.MathUtils.degToRad(longitude)
-        return new THREE.Vector3(
-          -radius * Math.cos(lat) * Math.cos(lon),
-          radius * Math.sin(lat),
-          radius * Math.cos(lat) * Math.sin(lon),
-        )
-      }
-
-      threatMaterial = new THREE.LineDashedMaterial({
-        color: 0xff4fd8,
-        transparent: true,
-        opacity: 0.72,
-        blending: THREE.AdditiveBlending,
-        dashSize: 0.045,
-        gapSize: 0.026,
-      })
-
-      threats.forEach((threat, index) => {
-        const nextThreat = threats[(index + 1) % threats.length]
-        const start = toGlobePosition(threat)
-        const end = toGlobePosition(nextThreat)
-        const distance = start.distanceTo(end)
-        const midpoint = start.clone()
-          .add(end)
-          .normalize()
-          .multiplyScalar(1.14 + distance * 0.18)
-        const curve = new THREE.QuadraticBezierCurve3(start, midpoint, end)
-        const arc = new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints(curve.getPoints(48)),
-          threatMaterial,
-        )
-        arc.computeLineDistances()
-        globe.add(arc)
-      })
-    }
-
-    const atmosphere = new THREE.Mesh(
-      new THREE.SphereGeometry(1.065, 48, 32),
-      new THREE.MeshBasicMaterial({
-        color: 0x9c48e8,
-        transparent: true,
-        opacity: 0.055,
-        side: THREE.BackSide,
-        blending: THREE.AdditiveBlending,
-      }),
-    )
-    globe.add(atmosphere)
-
-    const orbitMaterial = new THREE.MeshBasicMaterial({
-      color: 0xb66ff0,
-      transparent: true,
-      opacity: 0.22,
-      blending: THREE.AdditiveBlending,
-    })
-    const orbitOne = new THREE.Mesh(new THREE.TorusGeometry(1.28, 0.004, 8, 160), orbitMaterial)
-    orbitOne.rotation.x = 1.18
-    orbitOne.rotation.y = 0.25
-    scene.add(orbitOne)
-    const orbitTwo = new THREE.Mesh(new THREE.TorusGeometry(1.42, 0.003, 8, 160), orbitMaterial.clone())
-    orbitTwo.material.opacity = 0.12
-    orbitTwo.rotation.x = 0.35
-    orbitTwo.rotation.y = 0.82
-    scene.add(orbitTwo)
-
-    scene.add(new THREE.AmbientLight(0x8352a8, 1.8))
-    const keyLight = new THREE.PointLight(0xd8b4fe, 8, 12)
-    keyLight.position.set(-2.6, 2.4, 3.2)
-    scene.add(keyLight)
-    const rimLight = new THREE.PointLight(0x6d28d9, 7, 10)
-    rimLight.position.set(2.4, -1.2, -1.8)
-    scene.add(rimLight)
-
-    const resize = () => {
-      const size = Math.max(1, Math.min(mount.clientWidth, mount.clientHeight))
-      renderer.setSize(size, size, false)
-      camera.aspect = 1
-      camera.updateProjectionMatrix()
-    }
-    const resizeObserver = new ResizeObserver(resize)
-    resizeObserver.observe(mount)
-    resize()
-
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    let frameId
-    const animate = () => {
-      if (!reduceMotion) {
-        globe.rotation.y += 0.0027
-        orbitOne.rotation.z += 0.0012
-        orbitTwo.rotation.z -= 0.0008
-        if (threatMaterial) {
-          threatMaterial.dashOffset -= 0.003
-          threatMaterial.opacity = 0.62 + Math.sin(performance.now() * 0.0025) * 0.12
-        }
-      }
-      renderer.render(scene, camera)
-      frameId = requestAnimationFrame(animate)
-    }
-    animate()
-
-    return () => {
-      cancelAnimationFrame(frameId)
-      resizeObserver.disconnect()
-      mount.removeChild(renderer.domElement)
-      scene.traverse((object) => {
-        object.geometry?.dispose()
-        if (Array.isArray(object.material)) object.material.forEach((material) => material.dispose())
-        else object.material?.dispose()
-      })
-      renderer.dispose()
-    }
-  }, [threats])
-
-  return <div className="three-globe" ref={mountRef} aria-hidden="true" />
-}
-
-function SecurityVisual() {
-  const [threats, setThreats] = useState([])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    const cacheKey = 'evx-dshield-threats-v1'
-    const cacheLifetime = 60 * 60 * 1000
-
-    const normalize = (records) => records
-      .map((record) => ({
-        latitude: Number(record.latitude ?? record.lat),
-        longitude: Number(record.longitude ?? record.lng ?? record.lon),
-      }))
-      .filter(({ latitude, longitude }) => (
-        Number.isFinite(latitude)
-        && Number.isFinite(longitude)
-        && latitude >= -90
-        && latitude <= 90
-        && longitude >= -180
-        && longitude <= 180
-      ))
-
-    const loadThreats = async () => {
-      try {
-        const cached = JSON.parse(localStorage.getItem(cacheKey))
-        if (cached?.timestamp && Date.now() - cached.timestamp < cacheLifetime && Array.isArray(cached.threats)) {
-          setThreats(cached.threats)
-          return
-        }
-      } catch {
-        localStorage.removeItem(cacheKey)
-      }
-
-      const customEndpoint = import.meta.env.VITE_THREAT_ENDPOINT
-      if (customEndpoint) {
-        try {
-          const response = await fetch(customEndpoint, { signal: controller.signal })
-          if (!response.ok) throw new Error(`Custom feed returned ${response.status}`)
-          const payload = await response.json()
-          const customThreats = normalize(Array.isArray(payload) ? payload : payload.threats ?? [])
-          if (customThreats.length) {
-            setThreats(customThreats.slice(0, 250))
-            return
-          }
-        } catch (error) {
-          if (error.name === 'AbortError') return
-          console.warn('Custom threat feed unavailable; using DShield:', error.message)
-        }
-      }
-
-      const feedResponse = await fetch(
-        'https://isc.sans.edu/api/topips/records/10?json',
-        { signal: controller.signal },
-      )
-      if (!feedResponse.ok) throw new Error(`DShield returned ${feedResponse.status}`)
-      const indicators = await feedResponse.json()
-      if (!Array.isArray(indicators)) throw new Error('DShield returned an unexpected response')
-
-      const locations = await Promise.allSettled(
-        indicators.slice(0, 10).map(async ({ source }) => {
-          const response = await fetch(`https://ipwho.is/${encodeURIComponent(source)}`, {
-            signal: controller.signal,
-          })
-          if (!response.ok) throw new Error(`Geolocation returned ${response.status}`)
-          const result = await response.json()
-          if (!result.success) throw new Error(result.message ?? 'IP location unavailable')
-          return { latitude: result.latitude, longitude: result.longitude }
-        }),
-      )
-      const liveThreats = normalize(
-        locations
-          .filter((result) => result.status === 'fulfilled')
-          .map((result) => result.value),
-      )
-
-      setThreats(liveThreats)
-      try {
-        localStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), threats: liveThreats }))
-      } catch {
-        // The visualization still works when storage is unavailable.
-      }
-    }
-
-    loadThreats().catch((error) => {
-      if (error.name !== 'AbortError') console.warn('DShield threat feed unavailable:', error.message)
-    })
-
-    return () => controller.abort()
-  }, [])
-
-  return (
-    <div className="security-visual" aria-label="Spinning cyber security globe">
-      <div className="globe-aura" />
-      <ThreeGlobe threats={threats} />
-      <div className="globe-lock"><SafetyCertificateOutlined /></div>
-      <a
-        className="threat-attribution"
-        href="https://isc.sans.edu/"
-        target="_blank"
-        rel="noreferrer"
-      >
-        THREAT DATA: SANS ISC / DSHIELD
-      </a>
-    </div>
-  )
-}
-
 function HomePage() {
   return (
     <>
@@ -489,12 +214,12 @@ function HomePage() {
               Responsive IT support, resilient networks, and always-on cybersecurity—built around your business.
             </p>
             <div className="hero-actions">
-              <Button type="primary" size="large" href="/contact">
+              <RouterButton type="primary" size="large" to="/contact">
                 Strengthen your IT <ArrowRightOutlined />
-              </Button>
-              <Button className="ghost-button" size="large" href="/services">
+              </RouterButton>
+              <RouterButton className="ghost-button" size="large" to="/services">
                 Explore services
-              </Button>
+              </RouterButton>
             </div>
             <div className="trust-row">
               <span><CheckCircleFilled /> Security-first</span>
@@ -502,7 +227,6 @@ function HomePage() {
               <span><CheckCircleFilled /> Human support</span>
             </div>
           </div>
-          <SecurityVisual />
         </div>
         <div className="scroll-cue">SCROLL TO EXPLORE <span /></div>
       </section>
@@ -570,7 +294,7 @@ function HomePage() {
               <div><span><TeamOutlined /></span><p><b>Work with people who know your name</b>Direct access, accountable support, and advice grounded in your goals—not a ticket number.</p></div>
               <div><span><RocketOutlined /></span><p><b>Build for where you&apos;re going</b>Scalable systems and clear roadmaps support growth without constant rework.</p></div>
             </div>
-            <Button className="outline-button" size="large" href="/about">Why EVX One <ArrowRightOutlined /></Button>
+            <RouterButton className="outline-button" size="large" to="/about">Why EVX One <ArrowRightOutlined /></RouterButton>
           </div>
         </div>
       </section>
@@ -726,7 +450,7 @@ function AboutPage() {
                 <span><CheckCircleFilled /> Cybersecurity</span>
                 <span><CheckCircleFilled /> Client strategy</span>
               </div>
-              <Button className="outline-button" href="/contact">Start a conversation <ArrowRightOutlined /></Button>
+              <RouterButton className="outline-button" to="/contact">Start a conversation <ArrowRightOutlined /></RouterButton>
             </div>
           </div>
         </div>
@@ -819,7 +543,7 @@ function CallToAction() {
         </div>
         <div>
           <p>Tell us what&apos;s working, what isn&apos;t, and where you want to go. We&apos;ll help you build a clear path forward.</p>
-          <Button type="primary" size="large" href="/contact">Let&apos;s talk <ArrowRightOutlined /></Button>
+          <RouterButton type="primary" size="large" to="/contact">Let&apos;s talk <ArrowRightOutlined /></RouterButton>
         </div>
       </div>
     </section>
